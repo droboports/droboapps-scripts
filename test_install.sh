@@ -71,9 +71,9 @@ _copy_tgz() {
 # $1: logfile
 _collect_log() {
   if [ -f "$1" ]; then
-    log_info "Content of $1:"
+    log_info " ### Content of $1: ###"
     cat "$1"
-    log_info "End of $1"
+    log_info " ### End of $1 ### "
   else
     log_warn "Log file $1 not found"
   fi
@@ -83,6 +83,7 @@ _collect_log() {
 # $1: appname
 _collect_logs() {
   set +x
+  _collect_log "/mnt/DroboFS/Shares/DroboApps/.servicerc"
   _collect_log "/var/log/messages"
   _collect_log "/var/log/DroboApps.log"
   _collect_log "/tmp/DroboApps/log.txt"
@@ -94,18 +95,48 @@ _collect_logs() {
   return 0
 }
 
+## tests the existence and status of a single dependency
+# $1: appname
+_test_depend() {
+  grep "$1" "/mnt/DroboFS/Shares/DroboApps/.servicerc"
+  test -d "/mnt/DroboFS/Shares/DroboApps/$1"
+  test "$(/usr/bin/DroboApps.sh status_app "$1")" == "$1 is enabled and running"
+}
+
+## tests the existence and status of dependencies
+# $1: appname
+_test_depends() {
+  local depends
+  local servicesh="/mnt/DroboFS/Shares/DroboApps/$1/service.sh"
+
+  if [ ! -f "${servicesh}" ]; then
+    log_error "File missing: ${servicesh}"
+    return 1
+  fi
+
+  eval "$(grep ^depends= "${servicesh}")"
+  for appname in ${depends}; do
+    _test_depend "${appname}"
+  done
+}
+
 ## perform a simple install from scratch test
 # $1: appname
 _test_install() {
-  test "$(/usr/bin/DroboApps.sh status_app $1)" == "$1 is not installed."
+  test "$(/usr/bin/DroboApps.sh status_app "$1")" == "$1 is not installed."
   DroboApps.sh install
-  test "$(/usr/bin/DroboApps.sh status_app $1)" == "$1 is enabled and running"
+  test "$(/usr/bin/DroboApps.sh status_app "$1")" == "$1 is enabled and running"
+
+  _test_depends "$1"
+
   DroboApps.sh stop_app "$1"
-  test "$(/usr/bin/DroboApps.sh status_app $1)" == "$1 is disabled and stopped"
+  test "$(/usr/bin/DroboApps.sh status_app "$1")" == "$1 is disabled and stopped"
+
   DroboApps.sh start_app "$1"
-  test "$(/usr/bin/DroboApps.sh status_app $1)" == "$1 is enabled and running"
+  test "$(/usr/bin/DroboApps.sh status_app "$1")" == "$1 is enabled and running"
+
   "/mnt/DroboFS/Shares/DroboApps/$1/service.sh" restart
-  test "$(/usr/bin/DroboApps.sh status_app $1)" == "$1 is enabled and running"
+  test "$(/usr/bin/DroboApps.sh status_app "$1")" == "$1 is enabled and running"
 }
 
 _test() {
@@ -117,6 +148,7 @@ _test() {
 main() {
   _cleanup "$1"
   trap "_collect_logs $1" EXIT
+  _collect_log "/mnt/DroboFS/Shares/DroboApps/.servicerc"
   _test "$1"
   _collect_logs "$1"
   trap - EXIT
