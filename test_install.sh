@@ -117,7 +117,7 @@ _test() {
 main() {
   _cleanup "$1"
   trap "_collect_logs $1" EXIT
-  _test
+  _test "$1"
   _collect_logs "$1"
   trap - EXIT
   _cleanup "$1"
